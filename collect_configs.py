@@ -1,10 +1,11 @@
 import asyncio
 import os
+import random
 import re
 
 import socks
 from dotenv import load_dotenv
-from telethon import TelegramClient
+from telethon import TelegramClient, errors
 
 from services import fingerprint, parse_date, read_channels, renamer
 
@@ -37,6 +38,9 @@ async def scan_channels(
     semaphore: asyncio.Semaphore,
 ):
     async with semaphore:
+        delay = random.uniform(1.5, 4.5)
+        await asyncio.sleep(delay)
+
         channel_configs = set()
 
         try:
@@ -59,6 +63,17 @@ async def scan_channels(
                 print(f"- {channel:<30} | Found: 0")
 
             return channel_configs
+
+        except errors.FloodWaitError as e:
+            # SAFETY: If ban is long (>2 mins), skip the channel
+            print(f"! {channel:<30} | FloodWait {e.seconds}s detected.")
+            if e.seconds > 120:
+                print("   !! SKIPPING to avoid long ban.")
+                return None
+
+            # If short wait, we sleep and skip this turn
+            await asyncio.sleep(e.seconds)
+            return None
 
         except Exception as e:
             error_msg = str(e).split("(")[0]  # Shorten error message

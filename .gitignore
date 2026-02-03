@@ -216,3 +216,8 @@ __marimo__/
 .streamlit/secrets.toml
 *.session
 configs.txt
+active_configs.txt
+active_configs_latency_test_results.csv
+found-channels.txt
+found-v2ray-channels.txt
+v2ray_cores/*
