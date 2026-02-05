@@ -6,36 +6,53 @@ import re
 import aiohttp
 from aiohttp_socks import ProxyConnector
 
-from models.v2ray_config import CONFIG_PATTERN
-from services import renamer
 from services.read_channels import read_channels
 from services.telegram_web_scraping import (
     get_message_datetime,
     get_message_id,
-    get_message_text,
+    get_message_links,
     load_channel_messages,
 )
 
 PROXY_URL = "socks5://127.0.0.1:12334"
 MAX_CONCURRENT_SCANS = 20
 MAX_PAGES = 100
-OUTPUT_FILE = "configs.txt"
+OUTPUT_FILE = "extracted-channels.txt"
 
 SOURCE_CHANNELS_FILE = "./channels.txt"
-HOURS_BACK = 24
+DAYS_BACK = 7
 
 
-async def collect_channel_configs(
+IGNORE_LIST = {
+    "proxy",
+    "share",
+    "joinchat",
+    "addstickers",
+    "socks",
+    "bot",
+    "media",  # CSS code: @media
+    "import",  # Python/Java code: @import
+    "admin",  # Common text: "Contact @admin" (often not a real username)
+    "support",  # Common text: "Contact @support"
+    "gmail",
+    "yahoo",
+    "hotmail",
+    "protonmail",  # Email domains
+}
+
+
+async def extract_channel_links(
     channel: str,
     cutoff_date: datetime.datetime,
     session: aiohttp.ClientSession,
     semaphore: asyncio.Semaphore,
+    v2ray_channels: set[str],
 ):
     async with semaphore:
         delay = random.uniform(1.5, 4.0)
         await asyncio.sleep(delay)
 
-        channel_configs: set[str] = set()
+        channel_links: set[str] = set()
 
         last_msg_datetime = datetime.datetime.now(datetime.timezone.utc)
         next_offset_id = None
@@ -51,7 +68,7 @@ async def collect_channel_configs(
                     print(
                         f"✗ {channel:<30} | Restricted (No Web Preview) or Private Channel"
                     )
-                    return channel_configs
+                    return channel_links
                 else:
                     break
 
@@ -62,20 +79,41 @@ async def collect_channel_configs(
                     continue
 
                 if msg_datetime < cutoff_date:
-                    if len(channel_configs) > 0:
-                        print(f"✓ {channel:<30} | Found: {len(channel_configs)}")
+                    if len(channel_links) > 0:
+                        print(f"✓ {channel:<30} | Found: {len(channel_links)}")
                     else:
                         print(f"- {channel:<30} | Found: 0")
-                    return channel_configs
+                    return channel_links
 
-                msg_text = get_message_text(msg)
-                if msg_text:
-                    found = re.findall(CONFIG_PATTERN, msg_text)
-                    for config in found:
-                        config = config.rstrip(".:,;!?")
+                msg_links = get_message_links(msg)
+                if not msg_links:
+                    continue
 
-                        renamed_config = renamer.rename_config(config, channel)
-                        channel_configs.add(str(renamed_config))
+                for msg_link in msg_links:
+                    msg_link = (
+                        msg_link.replace("https://", "")
+                        .replace("http://", "")
+                        .replace("www.", "")
+                    )
+
+                    match = re.match(
+                        r"(?:t\.me|telegram\.me)\/(?:s\/)?([a-zA-Z0-9_]{4,})(?:$|[\/\?\#])",
+                        msg_link,
+                    )
+
+                    if match:
+                        username = match.group(1).lower()
+
+                        if username in IGNORE_LIST:
+                            continue
+
+                        if username.endswith("bot"):
+                            continue
+
+                        if username in v2ray_channels:
+                            continue
+
+                        channel_links.add(username)
 
             last_msg_datetime = None
             next_offset_id = None
@@ -95,21 +133,21 @@ async def collect_channel_configs(
             if not last_msg_datetime or not next_offset_id:
                 break
 
-        count = len(channel_configs)
+        count = len(channel_links)
         if count > 0:
             print(f"✓ {channel:<30} | Found: {count}")
         else:
             print(f"- {channel:<30} | Found: 0")
 
-        return channel_configs
+        return channel_links
 
 
-async def collect_all_channels_configs(channels: list[str], hours_back: int):
+async def extract_all_channels_links(channels: set[str], days_back: int):
     cutoff_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
-        hours=hours_back
+        days=days_back
     )
 
-    print(f"--- Collecting Configs from {len(channels)} Channels ---")
+    print(f"--- Extracting channel links from {len(channels)} Channels ---")
     print(f"--- Cutoff Date: {cutoff_date.strftime('%Y-%m-%d %H:%M:%S UTC')} ---")
 
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
@@ -121,7 +159,7 @@ async def collect_all_channels_configs(channels: list[str], hours_back: int):
     async with aiohttp.ClientSession(connector=connector) as session:
         tasks = []
         for channel in channels:
-            task = collect_channel_configs(channel, cutoff_date, session, sem)
+            task = extract_channel_links(channel, cutoff_date, session, sem, channels)
             tasks.append(task)
 
         total_configs_found = 0
@@ -139,15 +177,15 @@ async def collect_all_channels_configs(channels: list[str], hours_back: int):
                     for config in result:
                         f.write(config + "\n")
 
-    print("\nCollection Complete!")
-    print(f"   • Channels with configs: {channels_with_configs}")
-    print(f"   • Total configs saved:   {total_configs_found}")
-    print(f"   • Saved to:              {OUTPUT_FILE}")
+    print("\nExtraction Complete!")
+    print(f"   • Channels with channel links: {channels_with_configs}")
+    print(f"   • Total channel links saved:   {total_configs_found}")
+    print(f"   • Saved to:                    {OUTPUT_FILE}")
 
 
 async def main():
-    channels = read_channels(SOURCE_CHANNELS_FILE)
-    await collect_all_channels_configs(channels, hours_back=HOURS_BACK)
+    channels = set(read_channels(SOURCE_CHANNELS_FILE))
+    await extract_all_channels_links(channels, days_back=DAYS_BACK)
 
 
 if __name__ == "__main__":

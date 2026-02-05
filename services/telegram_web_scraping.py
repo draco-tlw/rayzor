@@ -66,6 +66,48 @@ def get_message_text(msg: Tag):
         return None
 
 
+def get_message_forwarded_from(msg: Tag):
+    try:
+        forwarded_from_a = msg.find(
+            "a", class_="tgme_widget_message_forwarded_from_name"
+        )
+        if not forwarded_from_a:
+            return None
+
+        link = forwarded_from_a.get("href")
+
+        if not link:
+            return None
+
+        link = str(link)
+        parts = link.split("/")
+
+        if len(parts) > 3:
+            return parts[3]
+
+        return None
+    except Exception as e:
+        print(f"[!] Error: {e}")
+        return None
+
+
+def get_message_links(msg: Tag):
+    try:
+        msg_links = msg.find_all("a")
+
+        if not msg_links:
+            return None
+
+        links = [
+            str(msg_link.get("href")) for msg_link in msg_links if msg_link.get("href")
+        ]
+
+        return links
+    except Exception as e:
+        print(f"[!] Error: {e}")
+        return None
+
+
 async def load_channel_messages(
     channel: str, session: aiohttp.ClientSession, before: str | None = None
 ):

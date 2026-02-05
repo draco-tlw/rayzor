@@ -7,6 +7,7 @@ import aiohttp
 from aiohttp_socks import ProxyConnector
 
 from models.v2ray_config import CONFIG_PATTERN
+from services.read_channels import read_channels
 from services.telegram_web_scraping import (
     get_message_datetime,
     get_message_id,
@@ -18,8 +19,8 @@ PROXY_URL = "socks5://127.0.0.1:12334"
 MAX_CONCURRENT_SCANS = 20
 MAX_PAGES = 25
 # MAX_PAGES = 100
-OUTPUT_FILE = "./found-v2ray-channels.txt"
-SOURCE_CHANNELS_FILE = "./found-channels.txt"
+OUTPUT_FILE = "./checked-channels.txt"
+SOURCE_CHANNELS_FILE = "./extracted-channels.txt"
 DAYS_BACK = 3
 # SOURCE_CHANNELS_FILE = "./channels.txt"
 # DAYS_BACK = 10
@@ -50,7 +51,9 @@ async def check_channel(
 
             if not messages:
                 if page_num == 0:
-                    print(f"✗ {channel:<30} | Empty or Private Channel")
+                    print(
+                        f"✗ {channel:<30} | Restricted (No Web Preview) or Private Channel"
+                    )
                 else:
                     print(
                         f"✗ {channel:<30} | End of history reached (No configs found)"
@@ -133,13 +136,7 @@ async def check_channels(channels: list[str], days_back: int):
 
 
 async def main():
-    try:
-        with open(SOURCE_CHANNELS_FILE, "r", encoding="utf-8") as f:
-            channels = list(set(f.read().split("\n")[:-1]))
-    except FileNotFoundError:
-        print(f"[!] Error: {SOURCE_CHANNELS_FILE} not found.")
-        return
-
+    channels = read_channels(SOURCE_CHANNELS_FILE)
     await check_channels(channels, days_back=DAYS_BACK)
 
 

@@ -132,9 +132,8 @@ async def scan_channel(
 async def find(start_time_str: str, end_time_str: str):
     print("\n--- Starting Crawler ---")
 
-    v2ray_channels = set(
-        [ch.lower() for ch in read_channels.read_channels(TARGET_CHANNELS)]
-    )
+    v2ray_channels = read_channels.read_channels(TARGET_CHANNELS)
+    v2ray_channels = set([ch.lower() for ch in v2ray_channels])
 
     print(f"Loaded {len(v2ray_channels)} seed channels to scan.")
 
@@ -255,10 +254,8 @@ async def main():
     #
     # print("saved to found-channels.txt")
 
-    with open("found-channels.txt", "r", encoding="utf-8") as f:
-        found_channels = f.read().split("\n")[:-1]
-
-        await check_channels("2026-01-24-00:00", "2026-02-01-00:00", found_channels)
+    found_channels = read_channels.read_channels("found-channels.txt")
+    await check_channels("2026-01-24-00:00", "2026-02-01-00:00", found_channels)
 
 
 if __name__ == "__main__":

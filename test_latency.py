@@ -16,7 +16,7 @@ from services import parse_config_link
 from services.read_configs import read_configs
 
 CORE_PATH = Path("./v2ray_cores/sing-box-1.12.19-linux-amd64/sing-box")
-CONFIGS_FILE = "configs.txt"
+CONFIGS_FILE = "unique-configs.txt"
 MASS_CONFIG_FILE = "mass_config.json"
 TEST_OUTPUT_FILE = "active_configs_latency_test_results.csv"
 ACTIVE_CONFIGS_FILE = "active_configs.txt"

@@ -221,4 +221,6 @@ active_configs.txt
 active_configs_latency_test_results.csv
 found-channels.txt
 found-v2ray-channels.txt
+checked-channels.txt
+extracted-channels.txt
 v2ray_cores/*
