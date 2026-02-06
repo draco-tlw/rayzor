@@ -4,6 +4,7 @@ import sys
 from colorama import Fore, Style, init
 
 import collect_configs
+import extract_channels
 import remove_duplicate_configs
 import test_latency
 
@@ -70,6 +71,23 @@ def main():
         help="Path to save test results",
     )
 
+    extract_parser = subparsers.add_parser(
+        "extract", help="Extract channels link from telegram channels"
+    )
+
+    extract_parser.add_argument(
+        "--channels",
+        required=True,
+        type=str,
+        help="Path of the channels file",
+    )
+    extract_parser.add_argument(
+        "--days-back", required=True, type=int, help="Number of days to go back"
+    )
+    extract_parser.add_argument(
+        "--output", required=True, type=str, help="Path for the output file"
+    )
+
     args = parser.parse_args()
 
     if args.command == "collect":
@@ -78,6 +96,8 @@ def main():
         remove_duplicate_configs.run(args.configs, args.output)
     elif args.command == "ping":
         test_latency.run(args.configs, args.output, args.result)
+    elif args.command == "extract":
+        extract_channels.run(args.channels, args.days_back, args.output)
 
 
 init(autoreset=True)

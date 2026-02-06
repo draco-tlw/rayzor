@@ -142,7 +142,9 @@ async def extract_channel_links(
         return channel_links
 
 
-async def extract_all_channels_links(channels: set[str], days_back: int):
+async def extract_all_channels_links(
+    channels: set[str], days_back: int, output_file: str = OUTPUT_FILE
+):
     cutoff_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
         days=days_back
     )
@@ -150,7 +152,7 @@ async def extract_all_channels_links(channels: set[str], days_back: int):
     print(f"--- Extracting channel links from {len(channels)} Channels ---")
     print(f"--- Cutoff Date: {cutoff_date.strftime('%Y-%m-%d %H:%M:%S UTC')} ---")
 
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         f.write("")
 
     connector = ProxyConnector.from_url(PROXY_URL)
@@ -173,14 +175,19 @@ async def extract_all_channels_links(channels: set[str], days_back: int):
                 total_configs_found += count
                 channels_with_configs += 1
 
-                with open(OUTPUT_FILE, "a", encoding="utf-8") as f:
+                with open(output_file, "a", encoding="utf-8") as f:
                     for config in result:
                         f.write(config + "\n")
 
     print("\nExtraction Complete!")
     print(f"   • Channels with channel links: {channels_with_configs}")
     print(f"   • Total channel links saved:   {total_configs_found}")
-    print(f"   • Saved to:                    {OUTPUT_FILE}")
+    print(f"   • Saved to:                    {output_file}")
+
+
+def run(channels_file: str, days_back: int, output_file: str):
+    channels = set(read_channels(channels_file))
+    asyncio.run(extract_all_channels_links(channels, days_back, output_file))
 
 
 async def main():
