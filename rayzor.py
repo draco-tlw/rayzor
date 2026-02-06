@@ -5,6 +5,7 @@ from colorama import Fore, Style, init
 
 import collect_configs
 import remove_duplicate_configs
+import test_latency
 
 
 def main():
@@ -46,20 +47,43 @@ def main():
         help="Path to save cleaned configs",
     )
 
+    ping_parser = subparsers.add_parser("ping", help="Test configs latency")
+
+    ping_parser.add_argument(
+        "--configs",
+        required=True,
+        type=str,
+        help="Path of the configs file",
+    )
+
+    ping_parser.add_argument(
+        "--output",
+        required=True,
+        type=str,
+        help="Path to save active configs",
+    )
+
+    ping_parser.add_argument(
+        "--result",
+        required=True,
+        type=str,
+        help="Path to save test results",
+    )
+
     args = parser.parse_args()
 
     if args.command == "collect":
         collect_configs.run(args.channels, args.hours_back, args.output)
     elif args.command == "clean-configs":
-        print("clean-conifgs command")
         remove_duplicate_configs.run(args.configs, args.output)
+    elif args.command == "ping":
+        test_latency.run(args.configs, args.output, args.result)
 
 
 init(autoreset=True)
 
 
 def print_banner():
-    # Using Option 1 (The Blade)
     banner = r"""
       ____  ___ __  __ ____  ____  ____ 
      / __ \/   |\ \/ /__  / / __ \/ __ \

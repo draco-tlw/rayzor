@@ -1,6 +1,8 @@
+import base64
 import csv
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -122,6 +124,40 @@ def ping_proxy(args):
         }
 
 
+SS_2022_METHODS = {
+    "2022-blake3-aes-128-gcm",
+    "2022-blake3-aes-256-gcm",
+    "2022-blake3-chacha20-poly1305",
+}
+
+
+def is_valid_base64_key(key_str, required_len=None):
+    """
+    Checks if a string is a valid Base64 key.
+    required_len: Expected byte length (e.g., 32 for Reality, 16 or 32 for SS-2022)
+    """
+    if not key_str:
+        return False
+
+    if not re.match(r"^[A-Za-z0-9+\/\-_=]+$", key_str):
+        return False
+
+    try:
+        s = key_str.replace("-", "+").replace("_", "/")
+        padding = len(s) % 4
+        if padding:
+            s += "=" * (4 - padding)
+
+        decoded = base64.b64decode(s, validate=True)
+
+        if required_len and len(decoded) != required_len:
+            return False
+
+        return True
+    except Exception:
+        return False
+
+
 def filter_supported_v2ray_configs(configs: list[V2rayConfig]):
     valid_configs: list[V2rayConfig] = []
 
@@ -129,12 +165,22 @@ def filter_supported_v2ray_configs(configs: list[V2rayConfig]):
         try:
             p = config.parsed_data
 
+            if not p.get("server") or not p.get("server_port"):
+                continue
+
             if p["type"] == "shadowsocks":
                 method = p.get("method", "").lower()
+                password = p.get("password", "")
+
                 if method not in parse_config_link.VALID_SS_METHODS:
                     continue
-                if p.get("password") == "":
+                if not password:
                     continue
+
+                if method in SS_2022_METHODS:
+                    req_len = 16 if "128" in method else 32
+                    if not is_valid_base64_key(password, req_len):
+                        continue
 
             if "transport" in p:
                 t_type = p["transport"].get("type", "")
@@ -143,8 +189,19 @@ def filter_supported_v2ray_configs(configs: list[V2rayConfig]):
                 if t_type == "xhttp":
                     continue
 
-            if p.get("server") and p.get("server_port"):
-                valid_configs.append(V2rayConfig(config.link, p))
+            if "tls" in p and p["tls"]:
+                if "reality" in p["tls"]:
+                    reality = p["tls"]["reality"]
+                    pbk = reality.get("public_key", "")
+                    sid = reality.get("short_id", "")
+
+                    if not is_valid_base64_key(pbk, 32):
+                        continue
+
+                    if sid and not re.match(r"^[0-9a-fA-F]+$", sid):
+                        continue
+
+            valid_configs.append(V2rayConfig(config.link, p))
 
         except Exception:
             pass
@@ -264,13 +321,15 @@ def test_latency(v2ray_configs: list[V2rayConfig]):
     return inactive_v2ray_configs
 
 
-def main():
+def run(configs_file: str, output_file: str, output_result_file: str):
     if not CORE_PATH.exists():
         print(f"Core not found at: {CORE_PATH}")
         return
 
+    print("--- Testing Configs Latency ---")
+
     print("Reading configs...")
-    all_config_links = read_configs(CONFIGS_FILE)
+    all_config_links = read_configs(configs_file)
     total_configs = len(all_config_links)
 
     print(f"Found {total_configs} configs. Filtering supported configs...")
@@ -291,11 +350,11 @@ def main():
     )
 
     # Initialize Files (Clear old results)
-    with open(TEST_OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
+    with open(output_result_file, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["config", "latency", "status", "msg"])
         writer.writeheader()
 
-    with open(ACTIVE_CONFIGS_FILE, "w", encoding="utf-8") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         f.write("")  # Clear file
 
     for attempt in range(MAX_RETRIES):
@@ -312,7 +371,7 @@ def main():
     print("\nFinalizing and sorting results...")
 
     final_rows = []
-    with open(TEST_OUTPUT_FILE, "r", encoding="utf-8") as f:
+    with open(output_result_file, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         final_rows = list(reader)
 
@@ -321,7 +380,7 @@ def main():
 
     final_rows.sort(key=lambda x: x["latency"])
 
-    with open(TEST_OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
+    with open(output_result_file, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["config", "latency", "status", "msg"])
         writer.writeheader()
         writer.writerows(final_rows)
@@ -330,9 +389,13 @@ def main():
     print("Testing Complete.")
     print(f"   Total Tested: {total_configs}")
     print(f"   Total Active: {len(final_rows)}")
-    print(f"   Saved to: {TEST_OUTPUT_FILE}")
-    print(f"             {ACTIVE_CONFIGS_FILE}")
+    print(f"   Saved to: {output_file}")
+    print(f"             {output_result_file}")
     print("=" * 40)
+
+
+def main():
+    run(CONFIGS_FILE, ACTIVE_CONFIGS_FILE, TEST_OUTPUT_FILE)
 
 
 if __name__ == "__main__":
