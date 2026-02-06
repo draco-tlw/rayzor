@@ -13,22 +13,14 @@ from pathlib import Path
 import requests
 from tqdm import tqdm
 
+from models.settings import load_settings
 from models.v2ray_config import V2rayConfig
 from services import parse_config_link
 from services.read_configs import read_configs
 
-CORE_PATH = Path("./v2ray_cores/sing-box-1.12.19-linux-amd64/sing-box")
-CONFIGS_FILE = "unique-configs.txt"
 MASS_CONFIG_FILE = "mass_config.json"
-TEST_OUTPUT_FILE = "active_configs_latency_test_results.csv"
-ACTIVE_CONFIGS_FILE = "active_configs.txt"
 
-BASE_PORT = 11000  # Starting port for local listeners
-TEST_URL = "http://connectivitycheck.gstatic.com/generate_204"
-TIMEOUT = 5
-BATCH_SIZE = 500  # Keep this under 500 to avoid 'Too many open files'
-MAX_WORKERS = 250  # Threads for HTTP requests
-MAX_RETRIES = 3
+settings = load_settings("./settings.json")
 
 
 def wait_for_port(port, timeout=5):
@@ -52,7 +44,7 @@ def generate_mass_config(v2ray_configs: list[V2rayConfig]):
     outbounds.append({"type": "direct", "tag": "direct"})
 
     for i, conf in enumerate(v2ray_configs):
-        port = BASE_PORT + i
+        port = settings.BASE_PORT + i
         tag = f"proxy-{i}"
 
         inbounds.append(
@@ -79,7 +71,7 @@ def generate_mass_config(v2ray_configs: list[V2rayConfig]):
 def ping_proxy(args):
     """Performs the HTTP check."""
     index, link_original = args
-    port = BASE_PORT + index
+    port = settings.BASE_PORT + index
 
     proxies = {
         "http": f"socks5://127.0.0.1:{port}",
@@ -89,7 +81,7 @@ def ping_proxy(args):
     try:
         start = time.time()
         with requests.Session() as s:
-            resp = s.get(TEST_URL, proxies=proxies, timeout=TIMEOUT)
+            resp = s.get(settings.TEST_URL, proxies=proxies, timeout=settings.TIMEOUT)
 
         latency = (time.time() - start) * 1000
 
@@ -219,7 +211,7 @@ def run_batch(batch_v2ray_configs: list[V2rayConfig], batch_id):
 
     # 3. Run Core
     process = subprocess.Popen(
-        [str(CORE_PATH), "run", "-c", MASS_CONFIG_FILE],
+        [settings.CORE_PATH, "run", "-c", MASS_CONFIG_FILE],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         text=True,
@@ -228,7 +220,7 @@ def run_batch(batch_v2ray_configs: list[V2rayConfig], batch_id):
     batch_results = []
     try:
         # Fast Start: Wait for the FIRST port in the batch to open
-        first_port = BASE_PORT
+        first_port = settings.BASE_PORT
         if not wait_for_port(first_port, timeout=5):
             # Check if process died
             if process.poll() is not None:
@@ -257,7 +249,7 @@ def run_batch(batch_v2ray_configs: list[V2rayConfig], batch_id):
 
         # 4. Test Links
         desc = f"Batch {batch_id}"
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        with ThreadPoolExecutor(max_workers=settings.MAX_WORKERS) as executor:
             futures = [executor.submit(ping_proxy, t) for t in tasks]
             for f in tqdm(
                 as_completed(futures), total=len(tasks), desc=desc, leave=False
@@ -277,36 +269,38 @@ def run_batch(batch_v2ray_configs: list[V2rayConfig], batch_id):
     return batch_results
 
 
-def test_latency(v2ray_configs: list[V2rayConfig]):
+def test_latency(
+    v2ray_configs: list[V2rayConfig], output_file: str, output_result_file: str
+):
     total_configs = len(v2ray_configs)
 
-    num_batches = (total_configs + BATCH_SIZE - 1) // BATCH_SIZE
+    num_batches = (total_configs + settings.BATCH_SIZE - 1) // settings.BATCH_SIZE
     total_active_count = 0
 
     inactive_v2ray_configs = v2ray_configs.copy()
 
-    for i in range(0, total_configs, BATCH_SIZE):
-        batch_num = (i // BATCH_SIZE) + 1
+    for i in range(0, total_configs, settings.BATCH_SIZE):
+        batch_num = (i // settings.BATCH_SIZE) + 1
 
-        end_idx = min(i + BATCH_SIZE, total_configs)
+        end_idx = min(i + settings.BATCH_SIZE, total_configs)
         print(
             f"\nProcessing Batch {batch_num}/{num_batches} (Links {i} to {end_idx})..."
         )
 
-        current_batch_v2ray_configs = v2ray_configs[i : i + BATCH_SIZE]
+        current_batch_v2ray_configs = v2ray_configs[i : i + settings.BATCH_SIZE]
         results = run_batch(current_batch_v2ray_configs, batch_num)
 
         active_in_batch = [r for r in results if r["status"] == "success"]
         total_active_count += len(active_in_batch)
 
-        with open(TEST_OUTPUT_FILE, "a", newline="", encoding="utf-8") as f:
+        with open(output_result_file, "a", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(
                 f, fieldnames=["config", "latency", "status", "msg"]
             )
             writer.writerows(active_in_batch)
 
         if active_in_batch:
-            with open(ACTIVE_CONFIGS_FILE, "a", encoding="utf-8") as f:
+            with open(output_file, "a", encoding="utf-8") as f:
                 for res in active_in_batch:
                     f.write(res["config"].strip() + "\n")
 
@@ -322,8 +316,8 @@ def test_latency(v2ray_configs: list[V2rayConfig]):
 
 
 def run(configs_file: str, output_file: str, output_result_file: str):
-    if not CORE_PATH.exists():
-        print(f"Core not found at: {CORE_PATH}")
+    if not Path(settings.CORE_PATH).exists():
+        print(f"Core not found at: {settings.CORE_PATH}")
         return
 
     print("--- Testing Configs Latency ---")
@@ -346,7 +340,7 @@ def run(configs_file: str, output_file: str, output_result_file: str):
     supported_v2ray_configs = filter_supported_v2ray_configs(v2ray_configs)
 
     print(
-        f"Found {len(supported_v2ray_configs)} supported configs. Splitting into batches of {BATCH_SIZE}..."
+        f"Found {len(supported_v2ray_configs)} supported configs. Splitting into batches of {settings.BATCH_SIZE}..."
     )
 
     # Initialize Files (Clear old results)
@@ -357,16 +351,18 @@ def run(configs_file: str, output_file: str, output_result_file: str):
     with open(output_file, "w", encoding="utf-8") as f:
         f.write("")  # Clear file
 
-    for attempt in range(MAX_RETRIES):
+    for attempt in range(settings.MAX_RETRIES):
         if not supported_v2ray_configs:
             print("\nAll configs verified active! Stopping retries early.")
             break
 
         # 2. Print Status Message
-        print(f"\n--- ROUND {attempt + 1} / {MAX_RETRIES} ---")
+        print(f"\n--- ROUND {attempt + 1} / {settings.MAX_RETRIES} ---")
         print(f"   Queued for testing: {len(supported_v2ray_configs)} configs")
 
-        supported_v2ray_configs = test_latency(supported_v2ray_configs)
+        supported_v2ray_configs = test_latency(
+            supported_v2ray_configs, output_file, output_result_file
+        )
 
     print("\nFinalizing and sorting results...")
 
@@ -392,11 +388,3 @@ def run(configs_file: str, output_file: str, output_result_file: str):
     print(f"   Saved to: {output_file}")
     print(f"             {output_result_file}")
     print("=" * 40)
-
-
-def main():
-    run(CONFIGS_FILE, ACTIVE_CONFIGS_FILE, TEST_OUTPUT_FILE)
-
-
-if __name__ == "__main__":
-    main()

@@ -1,10 +1,7 @@
 from services.read_channels import read_channels
 
-CHANNELS_FILE = "./channels.txt"
-OUTPUT_FILE = "clean-channels.txt"
 
-
-def clean(channels_file: str = CHANNELS_FILE, output_file: str = OUTPUT_FILE):
+def clean(channels_file: str, output_file: str):
     print("--- Channel Cleanup ---")
     print(f"Reading from: {channels_file}")
 
@@ -38,7 +35,3 @@ def clean(channels_file: str = CHANNELS_FILE, output_file: str = OUTPUT_FILE):
 
 def run(channels_file: str, output_file: str):
     clean(channels_file, output_file)
-
-
-if __name__ == "__main__":
-    clean()

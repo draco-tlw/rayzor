@@ -6,6 +6,7 @@ import re
 import aiohttp
 from aiohttp_socks import ProxyConnector
 
+from models.settings import load_settings
 from models.v2ray_config import CONFIG_PATTERN
 from services import renamer
 from services.read_channels import read_channels
@@ -16,13 +17,7 @@ from services.telegram_web_scraping import (
     load_channel_messages,
 )
 
-PROXY_URL = "socks5://127.0.0.1:12334"
-MAX_CONCURRENT_SCANS = 20
-MAX_PAGES = 100
-OUTPUT_FILE = "configs.txt"
-
-SOURCE_CHANNELS_FILE = "./channels.txt"
-HOURS_BACK = 24
+settings = load_settings("./settings.json")
 
 
 async def collect_channel_configs(
@@ -40,7 +35,7 @@ async def collect_channel_configs(
         last_msg_datetime = datetime.datetime.now(datetime.timezone.utc)
         next_offset_id = None
 
-        for page_num in range(MAX_PAGES):
+        for page_num in range(settings.MAX_PAGES):
             if last_msg_datetime < cutoff_date:
                 break
 
@@ -105,7 +100,7 @@ async def collect_channel_configs(
 
 
 async def collect_all_channels_configs(
-    channels: list[str], hours_back: int, output_file: str = OUTPUT_FILE
+    channels: list[str], hours_back: int, output_file: str
 ):
     cutoff_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
         hours=hours_back
@@ -114,11 +109,11 @@ async def collect_all_channels_configs(
     print(f"--- Collecting Configs from {len(channels)} Channels ---")
     print(f"--- Cutoff Date: {cutoff_date.strftime('%Y-%m-%d %H:%M:%S UTC')} ---")
 
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         f.write("")
 
-    connector = ProxyConnector.from_url(PROXY_URL)
-    sem = asyncio.Semaphore(MAX_CONCURRENT_SCANS)
+    connector = ProxyConnector.from_url(settings.PROXY_URL)
+    sem = asyncio.Semaphore(settings.MAX_CONCURRENT_SCANS)
 
     async with aiohttp.ClientSession(connector=connector) as session:
         tasks = []
@@ -150,12 +145,3 @@ async def collect_all_channels_configs(
 def run(channels_file: str, hours_back: int, output_file: str):
     channels = read_channels(channels_file)
     asyncio.run(collect_all_channels_configs(channels, hours_back, output_file))
-
-
-async def main():
-    channels = read_channels(SOURCE_CHANNELS_FILE)
-    await collect_all_channels_configs(channels, hours_back=HOURS_BACK)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())

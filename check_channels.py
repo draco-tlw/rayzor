@@ -6,6 +6,7 @@ import re
 import aiohttp
 from aiohttp_socks import ProxyConnector
 
+from models.settings import load_settings
 from models.v2ray_config import CONFIG_PATTERN
 from services.read_channels import read_channels
 from services.telegram_web_scraping import (
@@ -15,15 +16,7 @@ from services.telegram_web_scraping import (
     load_channel_messages,
 )
 
-PROXY_URL = "socks5://127.0.0.1:12334"
-MAX_CONCURRENT_SCANS = 20
-MAX_PAGES = 25
-# MAX_PAGES = 100
-OUTPUT_FILE = "./checked-channels.txt"
-SOURCE_CHANNELS_FILE = "./extracted-channels.txt"
-DAYS_BACK = 3
-# SOURCE_CHANNELS_FILE = "./channels.txt"
-# DAYS_BACK = 10
+settings = load_settings("./settings.json")
 
 
 async def check_channel(
@@ -40,7 +33,7 @@ async def check_channel(
         last_msg_datetime = datetime.datetime.now(datetime.timezone.utc)
         next_offset_id = None
 
-        for page_num in range(MAX_PAGES):
+        for page_num in range(settings.MAX_PAGES):
             if last_msg_datetime < cutoff_date:
                 print(
                     f"✗ {channel:<30} | Time limit reached before loading page {page_num+1}"
@@ -98,13 +91,13 @@ async def check_channel(
                 print(f"✗ {channel:<30} | Error: Could not find ID for pagination")
                 return None
 
-        print(f"✗ {channel:<30} | Scanned {MAX_PAGES} pages (No configs found)")
+        print(
+            f"✗ {channel:<30} | Scanned {settings.MAX_PAGES} pages (No configs found)"
+        )
         return None
 
 
-async def check_channels(
-    channels: list[str], days_back: int, output_file: str = OUTPUT_FILE
-):
+async def check_channels(channels: list[str], days_back: int, output_file: str):
     cutoff_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
         days=days_back
     )
@@ -115,8 +108,8 @@ async def check_channels(
     with open(output_file, "w", encoding="utf-8") as f:
         f.write("")
 
-    connector = ProxyConnector.from_url(PROXY_URL)
-    sem = asyncio.Semaphore(MAX_CONCURRENT_SCANS)
+    connector = ProxyConnector.from_url(settings.PROXY_URL)
+    sem = asyncio.Semaphore(settings.MAX_CONCURRENT_SCANS)
 
     async with aiohttp.ClientSession(connector=connector) as session:
         tasks = []
@@ -140,12 +133,3 @@ async def check_channels(
 def run(channels_file: str, days_back: int, output_file: str):
     channels = read_channels(channels_file)
     asyncio.run(check_channels(channels, days_back, output_file))
-
-
-async def main():
-    channels = read_channels(SOURCE_CHANNELS_FILE)
-    await check_channels(channels, days_back=DAYS_BACK)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())

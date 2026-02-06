@@ -1,0 +1,12 @@
+{
+  "PROXY_URL": "socks5://127.0.0.1:12334",
+  "MAX_CONCURRENT_SCANS": 20,
+  "MAX_PAGES": 100,
+  "CORE_PATH": "./v2ray_cores/sing-box-1.12.19-linux-amd64/sing-box",
+  "BASE_PORT": 11000,
+  "TEST_URL": "http://connectivitycheck.gstatic.com/generate_204",
+  "TIMEOUT": 5,
+  "BATCH_SIZE": 500,
+  "MAX_WORKERS": 250,
+  "MAX_RETRIES": 3
+}

@@ -6,6 +6,7 @@ import re
 import aiohttp
 from aiohttp_socks import ProxyConnector
 
+from models.settings import load_settings
 from services.read_channels import read_channels
 from services.telegram_web_scraping import (
     get_message_datetime,
@@ -14,14 +15,7 @@ from services.telegram_web_scraping import (
     load_channel_messages,
 )
 
-PROXY_URL = "socks5://127.0.0.1:12334"
-MAX_CONCURRENT_SCANS = 20
-MAX_PAGES = 100
-OUTPUT_FILE = "extracted-channels.txt"
-
-SOURCE_CHANNELS_FILE = "./channels.txt"
-DAYS_BACK = 7
-
+settings = load_settings("./settings.json")
 
 IGNORE_LIST = {
     "proxy",
@@ -57,7 +51,7 @@ async def extract_channel_links(
         last_msg_datetime = datetime.datetime.now(datetime.timezone.utc)
         next_offset_id = None
 
-        for page_num in range(MAX_PAGES):
+        for page_num in range(settings.MAX_PAGES):
             if last_msg_datetime < cutoff_date:
                 break
 
@@ -143,7 +137,7 @@ async def extract_channel_links(
 
 
 async def extract_all_channels_links(
-    channels: set[str], days_back: int, output_file: str = OUTPUT_FILE
+    channels: set[str], days_back: int, output_file: str
 ):
     cutoff_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
         days=days_back
@@ -155,8 +149,8 @@ async def extract_all_channels_links(
     with open(output_file, "w", encoding="utf-8") as f:
         f.write("")
 
-    connector = ProxyConnector.from_url(PROXY_URL)
-    sem = asyncio.Semaphore(MAX_CONCURRENT_SCANS)
+    connector = ProxyConnector.from_url(settings.PROXY_URL)
+    sem = asyncio.Semaphore(settings.MAX_CONCURRENT_SCANS)
 
     async with aiohttp.ClientSession(connector=connector) as session:
         tasks = []
@@ -188,12 +182,3 @@ async def extract_all_channels_links(
 def run(channels_file: str, days_back: int, output_file: str):
     channels = set(read_channels(channels_file))
     asyncio.run(extract_all_channels_links(channels, days_back, output_file))
-
-
-async def main():
-    channels = set(read_channels(SOURCE_CHANNELS_FILE))
-    await extract_all_channels_links(channels, days_back=DAYS_BACK)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
