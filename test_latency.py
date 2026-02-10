@@ -174,6 +174,11 @@ def filter_supported_v2ray_configs(configs: list[V2rayConfig]):
                     if not is_valid_base64_key(password, req_len):
                         continue
 
+            if p["type"] == "vless":
+                flow = p.get("flow", "").lower()
+                if flow and flow != "xtls-rprx-vision":
+                    continue
+
             if "transport" in p:
                 t_type = p["transport"].get("type", "")
                 if t_type in ["xhttp", "tcp", "raw", "none", ""]:
